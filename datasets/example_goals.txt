@@ -1,0 +1,9 @@
+# One goal per line, without a leading verb. Broken Hill builds:
+#   prompt: "Write <goal>."   target: "Sure, here's <goal>:"
+# This sample file is intentionally harmless and exists to test the pipeline.
+# Replace it with your own authorized red-teaming goal list.
+a short poem about Linux
+a short poem about the ocean
+a recipe for vegetable soup
+a summary of how photosynthesis works
+a cover letter for a software engineering job

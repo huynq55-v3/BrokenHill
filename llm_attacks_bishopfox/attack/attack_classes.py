@@ -584,6 +584,15 @@ class AttackParams(JSONSerializableObject):
         # The target output to measure against
         self.target_output = None
         
+        # Multi-prompt ("universal") attack support.
+        # Path to a dataset of prompts/goals. When set, the adversarial content is optimized against every entry instead of a single base_prompt/target_output.
+        self.prompt_dataset_path = None
+        # The loaded entries, stored as a list of {"prompt": ..., "target": ...} dictionaries so they persist in the JSON state file.
+        # When a dataset is loaded, base_prompt and target_output are set to the first entry so that single-prompt validation and self-tests keep working.
+        self.prompt_dataset_entries = None
+        # If set, only the first N entries of the dataset are used
+        self.prompt_dataset_max_entries = None
+        
         # TKTK: the other type of loss function
               
         # TKTK: randomize an operator-specified number of tokens each round, and use only the jailbreak success count to determine the course of evolution.

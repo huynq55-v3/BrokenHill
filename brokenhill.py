@@ -97,6 +97,8 @@ import torch.nn as nn
 import torch.quantization as tq
 import traceback
 
+from llm_attacks_bishopfox.universal.prompt_dataset import load_prompt_dataset
+from llm_attacks_bishopfox.universal.prompt_dataset import PromptDatasetException
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContent
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentList
 from llm_attacks_bishopfox.attack.attack_classes import AdversarialContentPlacement
@@ -1425,6 +1427,12 @@ if __name__=='__main__':
     parser.add_argument("--target-output", type = str, 
         help=f"The target output Broken Hill should measure potential results against, e.g. 'Sure, here's a convincing anonymous death threat'")
     
+    parser.add_argument("--prompt-dataset", type = str,
+        help="Path to a file of prompts/goals (.txt, .json, .yaml, .yml or .csv) to optimize a single adversarial value against ('universal' attack). Plain goals (one per line in .txt) get an automatically-generated prompt and target in the same way as --auto-target. Cannot be combined with --base-prompt, --target-output or --auto-target.")
+
+    parser.add_argument("--prompt-dataset-max-entries", type = numeric_string_to_int,
+        help="If specified, only the first N entries of --prompt-dataset are used.")
+
     parser.add_argument("--auto-target", type = str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and Broken Hill will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
@@ -2152,6 +2160,24 @@ if __name__=='__main__':
         
     if args.target_output:
         attack_params.target_output = args.target_output
+
+    if args.prompt_dataset:
+        attack_params.prompt_dataset_path = args.prompt_dataset
+    if args.prompt_dataset_max_entries is not None:
+        attack_params.prompt_dataset_max_entries = args.prompt_dataset_max_entries
+    if attack_params.prompt_dataset_path:
+        if args.base_prompt or args.target_output or args.auto_target:
+            logger.critical("Cannot specify --prompt-dataset when --base-prompt, --target-output or --auto-target are also specified.")
+            sys.exit(1)
+        try:
+            prompt_dataset_pairs = load_prompt_dataset(attack_params.prompt_dataset_path, max_entries = attack_params.prompt_dataset_max_entries)
+        except PromptDatasetException as e:
+            logger.critical(f"Could not load the prompt dataset: {e}")
+            sys.exit(1)
+        attack_params.prompt_dataset_entries = [p.to_dict() for p in prompt_dataset_pairs]
+        attack_params.base_prompt = prompt_dataset_pairs[0].prompt
+        attack_params.target_output = prompt_dataset_pairs[0].target
+        logger.info(f"Loaded {len(prompt_dataset_pairs)} prompt/target pair(s) from '{attack_params.prompt_dataset_path}'.")
 
     if args.overwrite_output:
         attack_params.overwrite_output = True
