@@ -4,11 +4,11 @@
 hardware_mode: "nvidia"
 model_path: "Qwen/Qwen2.5-0.5B-Instruct"
 prompt_dataset: "datasets/example_goals.txt" # File chứa danh sách câu hỏi / goals
-max_iterations: 50
+max_iterations: 100
 batch_size_get_logits: 512
 universal_batch_size: 0          # 0 = tối ưu toàn bộ prompt trong dataset mỗi vòng
 universal_loss_reduction: "mean" # 'mean' (trung bình) hoặc 'max' (ưu tiên câu khó)
-break_on_success: true           # Tự động dừng khi chuỗi suffix bẻ khóa 100% dataset
+break_on_success: false           # Tự động dừng khi chuỗi suffix bẻ khóa 100% dataset
 ignore_jailbreak_self_tests: true
 exclude_special_tokens: true
 exclude_nonascii_tokens: true
