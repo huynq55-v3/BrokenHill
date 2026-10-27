@@ -1426,6 +1426,10 @@ if __name__=='__main__':
     parser.add_argument("--auto-target", type = str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and Broken Hill will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
+    parser.add_argument("--hardware-mode", "--mode", choices=['auto', 'cpu', 'iris', 'nvidia', 'cuda'],
+        default=None,
+        help="Hardware execution mode: 'cpu' or 'iris' (optimized for CPU and Intel Iris Xe), 'nvidia' or 'cuda' (optimized for NVIDIA GPU with CUDA), or 'auto' (automatic detection).")
+    
     parser.add_argument("--device", default=None, type = str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). This is a shortcut equivalent to specifying both --model-device and --gradient-device with the same device name.")
     parser.add_argument("--model-device", type = str, 
@@ -1880,11 +1884,52 @@ if __name__=='__main__':
     cuda_available = torch.cuda.is_available()
     mps_available = torch.backends.mps.is_available()
     
-    if not cuda_available:
-        logger.warning(f"This host does not appear to have a PyTorch CUDA back-end available. Broken Hill will default to the PyTorch device '{attack_params.device_fallback}' instead.")
-        attack_params.model_device = attack_params.device_fallback
-        attack_params.gradient_device = attack_params.device_fallback
-        attack_params.forward_device = attack_params.device_fallback
+    # Resolve hardware mode: CLI flag overrides YAML config value, defaults to 'auto'
+    selected_mode = args.hardware_mode or getattr(attack_params, 'hardware_mode', None) or 'auto'
+    selected_mode = selected_mode.lower()
+
+    if selected_mode in ('cpu', 'iris'):
+        attack_params.hardware_mode = 'cpu'
+        attack_params.model_device = 'cpu'
+        attack_params.gradient_device = 'cpu'
+        attack_params.forward_device = 'cpu'
+        attack_params.batch_size_get_logits = 64
+        attack_params.new_adversarial_value_candidate_count = 32
+        attack_params.topk = 64
+        logger.info("[CHẾ ĐỘ: CPU / Intel Iris Xe] Đã kích hoạt cấu hình tối ưu cho CPU & Iris Xe (Batch: 64, TopK: 64, Device: cpu).")
+    elif selected_mode in ('nvidia', 'cuda'):
+        if not cuda_available:
+            logger.critical("LỖI: Bạn đã chọn chế độ '--hardware-mode nvidia / cuda' nhưng không phát hiện GPU Nvidia hỗ trợ CUDA trên máy này. Hãy dùng chế độ '--hardware-mode cpu' hoặc 'auto'.")
+            sys.exit(1)
+        attack_params.hardware_mode = 'cuda'
+        attack_params.model_device = 'cuda'
+        attack_params.gradient_device = 'cuda'
+        attack_params.forward_device = 'cuda'
+        attack_params.batch_size_get_logits = 512
+        attack_params.new_adversarial_value_candidate_count = 64
+        attack_params.topk = 256
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "Nvidia GPU"
+        logger.info(f"[CHẾ ĐỘ: NVIDIA GPU] Đã kích hoạt card {gpu_name} (Batch: 512, TopK: 256, Device: cuda).")
+    else: # 'auto'
+        if cuda_available:
+            attack_params.hardware_mode = 'cuda'
+            attack_params.model_device = 'cuda'
+            attack_params.gradient_device = 'cuda'
+            attack_params.forward_device = 'cuda'
+            attack_params.batch_size_get_logits = 512
+            attack_params.new_adversarial_value_candidate_count = 64
+            attack_params.topk = 256
+            gpu_name = torch.cuda.get_device_name(0) if torch.cuda.device_count() > 0 else "Nvidia GPU"
+            logger.info(f"[TỰ ĐỘNG NHẬN DIỆN] Đã phát hiện card Nvidia: {gpu_name}. Kích hoạt chế độ CUDA.")
+        else:
+            attack_params.hardware_mode = 'cpu'
+            attack_params.model_device = 'cpu'
+            attack_params.gradient_device = 'cpu'
+            attack_params.forward_device = 'cpu'
+            attack_params.batch_size_get_logits = 64
+            attack_params.new_adversarial_value_candidate_count = 32
+            attack_params.topk = 64
+            logger.info("[TỰ ĐỘNG NHẬN DIỆN] Không tìm thấy card Nvidia CUDA. Đã tự động kích hoạt chế độ tối ưu CPU / Intel Iris Xe.")
 
     if args.list_language_tags:
         attack_params.operating_mode = BrokenHillMode.LIST_IETF_TAGS
@@ -1908,6 +1953,9 @@ if __name__=='__main__':
     combined_device_params = False
     individual_device_params = False
     if args.device is not None:
+        if args.device.startswith("cuda") and not cuda_available:
+            logger.critical(f"LỖI: Bạn đã chỉ định thiết bị '{args.device}' nhưng hệ thống này không có GPU Nvidia CUDA.")
+            sys.exit(1)
         attack_params.model_device = args.device
         attack_params.gradient_device = args.device
         attack_params.forward_device = args.device

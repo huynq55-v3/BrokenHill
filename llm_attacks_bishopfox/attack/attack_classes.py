@@ -538,6 +538,9 @@ class AttackParams(JSONSerializableObject):
         
         # back-end to use if CUDA is not available
         self.device_fallback = 'cpu'
+        
+        # Hardware execution profile: 'auto', 'cpu', 'iris', 'nvidia', 'cuda'
+        self.hardware_mode = None
 
         self.model_path = None
 

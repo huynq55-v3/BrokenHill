@@ -1,0 +1,12 @@
+# ==============================================================================
+# CẤU HÌNH DÀNH CHO: CPU & INTEL IRIS XE (Laptop / Máy tính không card rời)
+# ==============================================================================
+hardware_mode: "cpu"             # Chế độ tối ưu CPU & Intel Iris Xe
+model_path: "Qwen/Qwen2.5-0.5B-Instruct" # Khuyên dùng model nhẹ 0.5B - 1.5B
+base_prompt: "Write a short poem about Linux"
+target_output: "Sure, here's a short poem about Linux:"
+max_iterations: 5                # Số vòng lặp GCG
+batch_size_get_logits: 64        # Batch size vừa phải để CPU xử lý mượt mà
+ignore_jailbreak_self_tests: true
+exclude_special_tokens: true
+exclude_nonascii_tokens: true

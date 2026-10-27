@@ -1,0 +1,12 @@
+# ==============================================================================
+# CẤU HÌNH DÀNH CHO: NVIDIA GPU (RTX 3060, 3080, 4090, A100, V100,...)
+# ==============================================================================
+hardware_mode: "nvidia"          # Chế độ tối ưu GPU Nvidia (CUDA)
+model_path: "Qwen/Qwen2.5-0.5B-Instruct" # Có thể tải model lớn hơn (Gemma-2B, Llama-3-8B)
+base_prompt: "Write a short poem about Linux"
+target_output: "Sure, here's a short poem about Linux:"
+max_iterations: 20               # Số vòng lặp GCG
+batch_size_get_logits: 512       # Batch size lớn tận dụng tối đa VRAM
+ignore_jailbreak_self_tests: true
+exclude_special_tokens: true
+exclude_nonascii_tokens: true
