@@ -3,12 +3,13 @@
 # Loader for multi-prompt ("universal") attack datasets.
 #
 # Supported formats (chosen by file extension):
-#   .txt          one goal per line (blank lines and lines starting with '#' are ignored).
-#                 Each goal gets an automatically-generated prompt and target, using the same
-#                 convention as --auto-target: "Write <goal>." / "Sure, here's <goal>:"
-#   .json / .yaml a list whose items are either a goal string (auto-target applies) or an
-#                 object with "prompt" and optional "target"/"goal" keys.
-#   .csv          a header row containing "prompt" and optionally "target" and/or "goal".
+#   .txt          Option A: Custom pairs using delimiter (e.g. "My prompt || My target" or tab-separated)
+#                 Option B: One goal per line (blank lines and lines starting with '#' are ignored).
+#                 Goals get an automatically-generated prompt and target ("Write <goal>." / "Sure, here's <goal>:").
+#   .json / .yaml A list of objects with custom "prompt" and "target" keys (no template applied),
+#                 or a goal string (auto-target applies).
+#   .csv          A header row with "prompt" and "target" columns (no template applied),
+#                 and optionally "goal".
 #
 # Every loaded entry becomes a PromptTargetPair. Entries are always returned as plain
 # dictionaries by to_dict() so they can be persisted in the JSON state file.
@@ -48,9 +49,18 @@ def get_automatic_prompt_and_target(goal):
 
 def _pair_from_entry(entry, source_description):
     if isinstance(entry, str):
-        if entry.strip() == "":
+        entry_str = entry.strip()
+        if entry_str == "":
             return None
-        return get_automatic_prompt_and_target(entry)
+        # Support custom prompt and target separated by delimiter (e.g. " || ", " ::: ", or "\t")
+        for sep in [" || ", " ::: ", "\t"]:
+            if sep in entry_str:
+                parts = entry_str.split(sep, 1)
+                p = parts[0].strip()
+                t = parts[1].strip()
+                if p and t:
+                    return PromptTargetPair(p, t)
+        return get_automatic_prompt_and_target(entry_str)
     if isinstance(entry, dict):
         prompt = entry.get("prompt")
         target = entry.get("target")

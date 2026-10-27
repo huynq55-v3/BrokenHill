@@ -3,7 +3,7 @@
 # ==============================================================================
 hardware_mode: "nvidia"
 model_path: "Qwen/Qwen2.5-0.5B-Instruct"
-prompt_dataset: "datasets/example_goals.txt" # File chứa danh sách câu hỏi / goals
+prompt_dataset: "datasets/custom_prompts.yaml" # File chứa danh sách câu hỏi / goals
 max_iterations: 100
 batch_size_get_logits: 512
 universal_batch_size: 0          # 0 = tối ưu toàn bộ prompt trong dataset mỗi vòng
