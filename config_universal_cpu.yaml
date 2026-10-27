@@ -1,0 +1,13 @@
+# ==============================================================================
+# CẤU HÌNH TẤN CÔNG ĐA MỤC TIÊU (UNIVERSAL ATTACK) TRÊN CPU / INTEL IRIS XE
+# ==============================================================================
+hardware_mode: "cpu"
+model_path: "Qwen/Qwen2.5-0.5B-Instruct"
+prompt_dataset: "datasets/example_goals.txt"
+max_iterations: 2
+batch_size_get_logits: 64
+universal_batch_size: 2          # Lấy mini-batch 2 câu để nhẹ CPU
+universal_loss_reduction: "mean"
+ignore_jailbreak_self_tests: true
+exclude_special_tokens: true
+exclude_nonascii_tokens: true

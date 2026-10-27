@@ -587,11 +587,16 @@ class AttackParams(JSONSerializableObject):
         # Multi-prompt ("universal") attack support.
         # Path to a dataset of prompts/goals. When set, the adversarial content is optimized against every entry instead of a single base_prompt/target_output.
         self.prompt_dataset_path = None
+        self.prompt_dataset = None
         # The loaded entries, stored as a list of {"prompt": ..., "target": ...} dictionaries so they persist in the JSON state file.
         # When a dataset is loaded, base_prompt and target_output are set to the first entry so that single-prompt validation and self-tests keep working.
         self.prompt_dataset_entries = None
         # If set, only the first N entries of the dataset are used
         self.prompt_dataset_max_entries = None
+        # Number of prompts sampled per iteration for gradient & candidate loss evaluation (0 = all prompts in dataset)
+        self.universal_batch_size = 0
+        # Method for aggregating candidate losses across prompts: 'mean' or 'max'
+        self.universal_loss_reduction = "mean"
         
         # TKTK: the other type of loss function
               

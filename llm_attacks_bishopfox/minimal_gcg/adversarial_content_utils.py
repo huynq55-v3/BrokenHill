@@ -732,7 +732,7 @@ class AdversarialContentManager:
             logger.debug(f"self.conv_template.sep_style = {self.conv_template.sep_style}, result = {result}")
         return result
 
-    def get_prompt(self, adversarial_content = None, force_python_tokenizer = False):#, update_self_values = True):
+    def get_prompt(self, adversarial_content = None, force_python_tokenizer = False, base_prompt = None, target_output = None):#, update_self_values = True):
 
         result = PromptAndInputIDCollection()
         
@@ -740,8 +740,11 @@ class AdversarialContentManager:
         working_adversarial_content = self.adversarial_content.copy()
         conversation_template = self.conv_template.copy()
 
+        current_base_prompt = base_prompt if base_prompt is not None else self.attack_state.persistable.attack_params.base_prompt
+        current_target_output = target_output if target_output is not None else self.attack_state.persistable.attack_params.target_output
+
         separator = ' '
-        if not self.attack_state.persistable.attack_params.base_prompt:
+        if not current_base_prompt:
             separator = ''
             
         if conversation_template is None:
@@ -750,8 +753,8 @@ class AdversarialContentManager:
         if adversarial_content is not None:
             working_adversarial_content = adversarial_content.copy()
 
-        conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-        conversation_template.append_message(conversation_template.roles[1], f"{self.attack_state.persistable.attack_params.target_output}")
+        conversation_template.append_message(conversation_template.roles[0], f"{current_base_prompt}{separator}{working_adversarial_content.as_string}")
+        conversation_template.append_message(conversation_template.roles[1], f"{current_target_output}")
         result.prompt = conversation_template.get_prompt()
 
         encoded_conversation_template_prompt = self.attack_state.tokenizer(result.prompt)
@@ -812,7 +815,7 @@ class AdversarialContentManager:
                 prompt_with_no_additional_messages = conversation_template.get_prompt()
                 prompt_with_no_additional_messages_token_ids = self.attack_state.tokenizer(prompt_with_no_additional_messages).input_ids            
                 #conversation_template.append_message(conversation_template.roles[0], None)
-                conversation_template.append_message(conversation_template.roles[0], f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
+                conversation_template.append_message(conversation_template.roles[0], f"{current_base_prompt}{separator}{working_adversarial_content.as_string}")
                 current_prompt = conversation_template.get_prompt()
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"current_prompt = '{current_prompt}'")
@@ -823,8 +826,8 @@ class AdversarialContentManager:
 
                 # Detour into figuring out the base prompt / goal, adversarial content / control, and target output slices
                 # TKTK: update the remainder of this function to handle different placement of the adversarial content
-                #conversation_template.update_last_message(f"{self.attack_state.persistable.attack_params.base_prompt}{separator}{working_adversarial_content.as_string}")
-                conversation_template.append_message(conversation_template.roles[1], self.attack_state.persistable.attack_params.target_output)
+                #conversation_template.update_last_message(f"{current_base_prompt}{separator}{working_adversarial_content.as_string}")
+                conversation_template.append_message(conversation_template.roles[1], current_target_output)
                 current_prompt = conversation_template.get_prompt()
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                     logger.debug(f"current_prompt = '{current_prompt}'")
@@ -832,11 +835,11 @@ class AdversarialContentManager:
                 current_decoded_tokens = get_decoded_tokens(self.attack_state, current_token_ids)
 
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"Searching for last index of '{self.attack_state.persistable.attack_params.base_prompt}' in {current_decoded_tokens} to determine goal output slice.")
+                    logger.debug(f"Searching for last index of '{current_base_prompt}' in {current_decoded_tokens} to determine goal output slice.")
 
                 result.slice_data.goal = find_last_index_of_token(self.attack_state, 
                     self.trash_fire_tokens, 
-                    self.attack_state.persistable.attack_params.base_prompt, 
+                    current_base_prompt, 
                     current_token_ids, 
                     current_decoded_tokens, 
                     conversation_template = conversation_template, 
@@ -880,11 +883,11 @@ class AdversarialContentManager:
                 self.validate_slice_data('get_prompt (Python) - control', result.slice_data, current_token_ids, current_decoded_tokens)
 
                 if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                    logger.debug(f"Searching for last index of '{self.attack_state.persistable.attack_params.target_output}' in {current_decoded_tokens} to determine target output slice.")
+                    logger.debug(f"Searching for last index of '{current_target_output}' in {current_decoded_tokens} to determine target output slice.")
 
                 result.slice_data.target_output = find_last_index_of_token(self.attack_state, 
                     self.trash_fire_tokens, 
-                    self.attack_state.persistable.attack_params.target_output, 
+                    current_target_output, 
                     current_token_ids, 
                     current_decoded_tokens, 
                     conversation_template = conversation_template, 
@@ -1021,10 +1024,10 @@ class AdversarialContentManager:
                     self.validate_slice_data('get_prompt (non-Python) - system', result.slice_data, current_token_ids, current_decoded_tokens)
 
                     # TKTK: BEGIN: update the goal and control slice logic to handle different placement of the adversarial content
-                    base_prompt_start_index = result.prompt.rindex(self.attack_state.persistable.attack_params.base_prompt)
-                    len_base_prompt = len(self.attack_state.persistable.attack_params.base_prompt)
+                    base_prompt_start_index = result.prompt.rindex(current_base_prompt)
+                    len_base_prompt = len(current_base_prompt)
                     base_prompt_end_index = base_prompt_start_index + len_base_prompt
-                    encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, self.attack_state.persistable.attack_params.base_prompt)
+                    encoded_base_prompt = encode_string_for_real_without_any_cowboy_funny_business(self.attack_state, current_base_prompt)
                     if encoded_base_prompt is None or len(encoded_base_prompt) == 0:
                         raise PromptGenerationException(f"encoded_base_prompt was {encoded_base_prompt}, cannot be None or zero-length.")
                     
@@ -1091,17 +1094,17 @@ class AdversarialContentManager:
 
                     self.print_slice_info("get_prompt (non-Python)", result.slice_data, current_token_ids)
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                        logger.debug(f"result.prompt = '{result.prompt}', self.attack_state.persistable.attack_params.target_output = '{self.attack_state.persistable.attack_params.target_output}'")
-                    prompt_find_self_target = result.prompt.rindex(self.attack_state.persistable.attack_params.target_output)
+                        logger.debug(f"result.prompt = '{result.prompt}', current_target_output = '{current_target_output}'")
+                    prompt_find_self_target = result.prompt.rindex(current_target_output)
                     if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"prompt_find_self_target = '{prompt_find_self_target}'")
                     prompt_find_self_target_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target)
                     if prompt_find_self_target_c2t is None:
                         if self.attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                            logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{self.attack_state.persistable.attack_params.target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
+                            logger.debug(f"got None for encoded_conversation_template_prompt.char_to_token(prompt_find_self_target). prompt_find_self_target = '{prompt_find_self_target}' using '{current_target_output}' in '{result.prompt}'. Using value {result.slice_data.assistant.stop} instead of None. This may indicate an error with the parsing logic.")
                         prompt_find_self_target_c2t = result.slice_data.assistant.stop
                     prompt_combined_c2t = None
-                    add_length = len(self.attack_state.persistable.attack_params.target_output) + 1
+                    add_length = len(current_target_output) + 1
                     while prompt_combined_c2t is None:
                         prompt_combined_c2t = encoded_conversation_template_prompt.char_to_token(prompt_find_self_target + (add_length))
                         add_length -= 1
@@ -1185,7 +1188,7 @@ class AdversarialContentManager:
             # update the prompt string as well in case anything ends up using that
             target_output_start_index = None
             # Use the stripped version of the string because some tokenizers will strip out spaces on their own, and the rindex operation will fail.
-            target_output_string = self.attack_state.persistable.attack_params.target_output.strip()
+            target_output_string = current_target_output.strip()
             try:
                 target_output_start_index = result.prompt.rindex(target_output_string)
             except Exception as e:

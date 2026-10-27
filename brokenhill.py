@@ -237,6 +237,31 @@ def check_pytorch_devices(attack_params):
 
 
 
+def build_prompt_ids_and_data(attack_state, adversarial_content, prompt_text, target_text, ignore_prologue=False):
+    if ignore_prologue:
+        conv_template = attack_state.conversation_template.copy()
+        conv_template.system_message = ""
+        conv_template.messages = []
+        adv_mgr = AdversarialContentManager(
+            attack_state=attack_state,
+            conv_template=conv_template,
+            adversarial_content=adversarial_content.copy(),
+            trash_fire_tokens=attack_state.trash_fire_token_treasury
+        )
+    else:
+        adv_mgr = attack_state.adversarial_content_manager
+    
+    id_data = adv_mgr.get_prompt(
+        adversarial_content=adversarial_content,
+        force_python_tokenizer=attack_state.persistable.attack_params.force_python_tokenizer,
+        base_prompt=prompt_text,
+        target_output=target_text
+    )
+    ids = id_data.get_input_ids_as_tensor().to(attack_state.model_device)
+    return ids, id_data
+
+
+
 def main(attack_params, log_manager):
     user_aborted = False
     abnormal_termination = False
@@ -487,11 +512,28 @@ def main(attack_params, log_manager):
                     
                     attack_state.adversarial_content_manager.adversarial_content = attack_state.persistable.current_adversarial_content
                                        
+                    is_universal_mode = bool(attack_state.persistable.attack_params.prompt_dataset_entries)
+                    if is_universal_mode:
+                        all_dataset_entries = attack_state.persistable.attack_params.prompt_dataset_entries
+                        bsz = attack_state.persistable.attack_params.universal_batch_size
+                        if bsz and 0 < bsz < len(all_dataset_entries):
+                            start_idx = (attack_state.persistable.main_loop_iteration_number * bsz) % len(all_dataset_entries)
+                            active_prompts = [all_dataset_entries[(start_idx + i) % len(all_dataset_entries)] for i in range(bsz)]
+                        else:
+                            active_prompts = all_dataset_entries
+                    else:
+                        active_prompts = [{"prompt": attack_state.persistable.attack_params.base_prompt, "target": attack_state.persistable.attack_params.target_output}]
+
                     # Step 1. Encode user prompt (behavior + adv suffix) as tokens and return token ids.
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_id_data")
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                         logger.debug(f"Calling get_input_ids with attack_state.persistable.current_adversarial_content = '{attack_state.persistable.current_adversarial_content.get_short_description()}'")
-                    input_id_data = attack_state.adversarial_content_manager.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+                    input_id_data = attack_state.adversarial_content_manager.get_prompt(
+                        adversarial_content = attack_state.persistable.current_adversarial_content,
+                        force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer,
+                        base_prompt = active_prompts[0]["prompt"],
+                        target_output = active_prompts[0]["target"]
+                    )
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after creating input_id_data")
                     
                     # Only perform this work if the results will actually be logged
@@ -505,7 +547,10 @@ def main(attack_params, log_manager):
                             decoded_loss_slice = get_decoded_tokens(attack_state, input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss])                    
                             logger.debug(f"decoded_input_tokens = '{decoded_input_tokens}'\n decoded_full_prompt_token_ids = '{decoded_full_prompt_token_ids}'\n decoded_control_slice = '{decoded_control_slice}'\n decoded_target_slice = '{decoded_target_slice}'\n decoded_loss_slice = '{decoded_loss_slice}'\n input_id_data.slice_data.control = '{input_id_data.slice_data.control}'\n input_id_data.slice_data.target_output = '{input_id_data.slice_data.target_output}'\n input_id_data.slice_data.loss = '{input_id_data.slice_data.loss}'\n input_id_data.input_token_ids = '{input_id_data.input_token_ids}'\n input_id_data.full_prompt_token_ids = '{input_id_data.full_prompt_token_ids}'")
                     
-                    decoded_loss_slice_string = get_escaped_string(attack_state.tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
+                    if is_universal_mode:
+                        decoded_loss_slice_string = f"Universal Dataset ({len(active_prompts)} prompts active)"
+                    else:
+                        decoded_loss_slice_string = get_escaped_string(attack_state.tokenizer.decode(input_id_data.full_prompt_token_ids[input_id_data.slice_data.loss]))
                     
                     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - before creating input_ids")
                     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -526,7 +571,12 @@ def main(attack_params, log_manager):
                             conv_template = conv_template_gcg_ops, 
                             adversarial_content = attack_state.persistable.current_adversarial_content.copy(),
                             trash_fire_tokens = attack_state.trash_fire_token_treasury)
-                        input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(adversarial_content = attack_state.persistable.current_adversarial_content, force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer)
+                        input_id_data_gcg_ops = adversarial_content_manager_gcg_ops.get_prompt(
+                            adversarial_content = attack_state.persistable.current_adversarial_content,
+                            force_python_tokenizer = attack_state.persistable.attack_params.force_python_tokenizer,
+                            base_prompt = active_prompts[0]["prompt"],
+                            target_output = active_prompts[0]["target"]
+                        )
                         input_ids_gcg_ops = input_id_data_gcg_ops.get_input_ids_as_tensor().to(attack_state.model_device)
 
                     best_new_adversarial_content = None                    
@@ -545,9 +595,30 @@ def main(attack_params, log_manager):
                         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                             logger.debug(f"Computing coordinate gradient")
                         try:
-                            coordinate_gradient = token_gradients(attack_state,
-                                input_ids_gcg_ops,
-                                input_id_data_gcg_ops)
+                            if is_universal_mode and len(active_prompts) > 1:
+                                accumulated_gradient = None
+                                for p_idx, p_entry in enumerate(active_prompts):
+                                    p_ids, p_data = build_prompt_ids_and_data(
+                                        attack_state,
+                                        attack_state.persistable.current_adversarial_content,
+                                        p_entry["prompt"],
+                                        p_entry["target"],
+                                        ignore_prologue=attack_state.persistable.attack_params.ignore_prologue_during_gcg_operations
+                                    )
+                                    grad_p = token_gradients(attack_state, p_ids, p_data)
+                                    if accumulated_gradient is None:
+                                        accumulated_gradient = grad_p
+                                    else:
+                                        accumulated_gradient += grad_p
+                                    del p_ids
+                                    del p_data
+                                    gc.collect()
+                                coordinate_gradient = accumulated_gradient / float(len(active_prompts))
+                                coordinate_gradient = coordinate_gradient / coordinate_gradient.norm(dim=-1, keepdim=True)
+                            else:
+                                coordinate_gradient = token_gradients(attack_state,
+                                    input_ids_gcg_ops,
+                                    input_id_data_gcg_ops)
                         except GradientCreationException as e:
                             raise GradientCreationException(f"Attempting to generate a coordinate gradient failed: {e}. Please contact a developer with steps to reproduce this issue if it has not already been reported.\n{traceback.format_exc()}")
                         if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
@@ -721,25 +792,56 @@ def main(attack_params, log_manager):
                                 
                                 # Step 3.4 Compute loss on these candidates and take the argmin.
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"Getting logits")
-                                logits, ids = get_logits(attack_state,
-                                    input_ids = input_ids_gcg_ops,
-                                    adversarial_content = attack_state.persistable.current_adversarial_content, 
-                                    adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                    return_ids = True,
-                                    control_slice = input_id_data_gcg_ops.slice_data.control)
-                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting logits")
-
-                                if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
-                                    logger.debug(f"Calculating target loss")
-                                losses = target_loss(attack_state, logits, ids, input_id_data_gcg_ops)
+                                    logger.debug(f"Getting logits and candidate loss")
+                                
+                                if is_universal_mode and len(active_prompts) > 1:
+                                    total_candidate_losses = None
+                                    for p_idx, p_entry in enumerate(active_prompts):
+                                        p_ids, p_data = build_prompt_ids_and_data(
+                                            attack_state,
+                                            attack_state.persistable.current_adversarial_content,
+                                            p_entry["prompt"],
+                                            p_entry["target"],
+                                            ignore_prologue=attack_state.persistable.attack_params.ignore_prologue_during_gcg_operations
+                                        )
+                                        logits_p, ids_p = get_logits(
+                                            attack_state,
+                                            input_ids=p_ids,
+                                            adversarial_content=attack_state.persistable.current_adversarial_content,
+                                            adversarial_candidate_list=new_adversarial_candidate_list_filtered,
+                                            return_ids=True,
+                                            control_slice=p_data.slice_data.control
+                                        )
+                                        loss_p = target_loss(attack_state, logits_p, ids_p, p_data)
+                                        del logits_p
+                                        del ids_p
+                                        del p_ids
+                                        del p_data
+                                        gc.collect()
+                                        if total_candidate_losses is None:
+                                            total_candidate_losses = loss_p
+                                        else:
+                                            if attack_state.persistable.attack_params.universal_loss_reduction == "max":
+                                                total_candidate_losses = torch.maximum(total_candidate_losses, loss_p)
+                                            else:
+                                                total_candidate_losses += loss_p
+                                    if attack_state.persistable.attack_params.universal_loss_reduction == "mean":
+                                        losses = total_candidate_losses / float(len(active_prompts))
+                                    else:
+                                        losses = total_candidate_losses
+                                else:
+                                    logits, ids = get_logits(attack_state,
+                                        input_ids = input_ids_gcg_ops,
+                                        adversarial_content = attack_state.persistable.current_adversarial_content, 
+                                        adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
+                                        return_ids = True,
+                                        control_slice = input_id_data_gcg_ops.slice_data.control)
+                                    losses = target_loss(attack_state, logits, ids, input_id_data_gcg_ops)
+                                    del logits
+                                    del ids
+                                    gc.collect()
+                                
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting loss values")
-                                # get rid of logits and ids immediately to save device memory, as it's no longer needed after the previous operation
-                                # This frees about 1 GiB of device memory for a 500M model on CPU or CUDA
-                                del logits
-                                del ids
-                                gc.collect()
-                                attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after deleting logits and ids and running gc.collect")
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
                                     logger.debug(f"losses = {losses}")
                                     logger.debug(f"Getting losses argmin")
@@ -950,6 +1052,30 @@ def main(attack_params, log_manager):
                     iteration_status_message = f"{iteration_status_message}Current best new adversarial content: {attack_state.persistable.current_adversarial_content.get_short_description()}"               
                     logger.info(iteration_status_message)
                     
+                    if is_universal_mode:
+                        universal_eval_entries = attack_state.persistable.attack_params.prompt_dataset_entries
+                        univ_jb_count = 0
+                        for u_entry in universal_eval_entries:
+                            u_ids_data = attack_state.adversarial_content_manager.get_prompt(
+                                adversarial_content=attack_state.persistable.current_adversarial_content,
+                                force_python_tokenizer=attack_state.persistable.attack_params.force_python_tokenizer,
+                                base_prompt=u_entry["prompt"],
+                                target_output=u_entry["target"]
+                            )
+                            is_u_success, _, _ = attack_state.check_for_attack_success(
+                                u_ids_data,
+                                current_temperature,
+                                do_sample=False
+                            )
+                            if is_u_success:
+                                univ_jb_count += 1
+                        asr = (univ_jb_count / float(len(universal_eval_entries))) * 100.0
+                        logger.info(f"[UNIVERSAL ASR] Tỷ lệ bẻ khóa thành công trên dataset: {univ_jb_count}/{len(universal_eval_entries)} ({asr:.1f}%)")
+                        if univ_jb_count == len(universal_eval_entries):
+                            logger.info(f"🏆 [THÀNH CÔNG HOÀN TOÀN] Chuỗi Universal Suffix đã bẻ khóa 100% dataset ({univ_jb_count}/{len(universal_eval_entries)})!")
+                            if attack_state.persistable.attack_params.break_on_success:
+                                is_success = True
+
                     # TKTK: maybe make this a threshold
                     if attack_results_current_iteration.jailbreak_detection_count > 0:
                         attack_state.persistable.successful_attack_count += 1
@@ -1432,6 +1558,14 @@ if __name__=='__main__':
 
     parser.add_argument("--prompt-dataset-max-entries", type = numeric_string_to_int,
         help="If specified, only the first N entries of --prompt-dataset are used.")
+
+    parser.add_argument("--universal-batch-size", type = numeric_string_to_int,
+        default = attack_params.universal_batch_size,
+        help="In multi-prompt ('universal') mode, number of prompts sampled per iteration for gradient calculation and candidate evaluation (default: 0 = all prompts).")
+
+    parser.add_argument("--universal-loss-reduction", type = str, choices=['mean', 'max'],
+        default = attack_params.universal_loss_reduction,
+        help="In multi-prompt mode, loss aggregation function across prompts: 'mean' or 'max'.")
 
     parser.add_argument("--auto-target", type = str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and Broken Hill will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
@@ -2163,6 +2297,8 @@ if __name__=='__main__':
 
     if args.prompt_dataset:
         attack_params.prompt_dataset_path = args.prompt_dataset
+    elif attack_params.prompt_dataset:
+        attack_params.prompt_dataset_path = attack_params.prompt_dataset
     if args.prompt_dataset_max_entries is not None:
         attack_params.prompt_dataset_max_entries = args.prompt_dataset_max_entries
     if attack_params.prompt_dataset_path:
@@ -2178,6 +2314,11 @@ if __name__=='__main__':
         attack_params.base_prompt = prompt_dataset_pairs[0].prompt
         attack_params.target_output = prompt_dataset_pairs[0].target
         logger.info(f"Loaded {len(prompt_dataset_pairs)} prompt/target pair(s) from '{attack_params.prompt_dataset_path}'.")
+
+    if args.universal_batch_size is not None:
+        attack_params.universal_batch_size = args.universal_batch_size
+    if args.universal_loss_reduction is not None:
+        attack_params.universal_loss_reduction = args.universal_loss_reduction
 
     if args.overwrite_output:
         attack_params.overwrite_output = True
