@@ -724,7 +724,8 @@ def main(attack_params, log_manager):
                                     input_ids = input_ids_gcg_ops,
                                     adversarial_content = attack_state.persistable.current_adversarial_content, 
                                     adversarial_candidate_list = new_adversarial_candidate_list_filtered, 
-                                    return_ids = True)
+                                    return_ids = True,
+                                    control_slice = input_id_data_gcg_ops.slice_data.control)
                                 attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = f"main loop iteration {display_iteration_number} - after getting logits")
 
                                 if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:

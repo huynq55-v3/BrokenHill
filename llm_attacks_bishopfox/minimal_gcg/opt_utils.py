@@ -1028,7 +1028,7 @@ def get_filtered_cands(attack_state, new_adversarial_content_list, filter_cand =
 
     return result
 
-def get_logits(attack_state, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False):
+def get_logits(attack_state, input_ids, adversarial_content, adversarial_candidate_list = None, return_ids = False, control_slice = None):
     
     if adversarial_candidate_list is None or len(adversarial_candidate_list.adversarial_content) < 1:
         raise BrokenHillValueException(f"adversarial_candidate_list must be an AdversarialContentList with at least 1 entry. Got empty array or null.")
@@ -1069,7 +1069,11 @@ def get_logits(attack_state, input_ids, adversarial_content, adversarial_candida
             f"got {test_ids.shape}"
         ))
 
-    locs = torch.arange(0, number_of_adversarial_token_ids).repeat(test_ids.shape[0], 1).to(attack_state.model.device)
+    # Candidates must be written over the adversarial content ("control") slice of the prompt, not the beginning of the prompt.
+    control_start = 0
+    if control_slice is not None and control_slice.start is not None:
+        control_start = control_slice.start
+    locs = torch.arange(control_start, control_start + number_of_adversarial_token_ids).repeat(test_ids.shape[0], 1).to(attack_state.model.device)
     attack_state.persistable.performance_data.collect_torch_stats(attack_state, location_description = "get_logits - after creating locs")
     ids = torch.scatter(
         input_ids.unsqueeze(0).repeat(test_ids.shape[0], 1).to(attack_state.model.device),
