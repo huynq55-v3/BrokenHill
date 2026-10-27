@@ -891,6 +891,7 @@ def main(attack_params, log_manager):
                         if is_success:
                             if attack_data_current_iteration.is_canonical_result:
                                 attack_data_current_iteration.canonical_llm_jailbroken = True
+                                attack_results_current_iteration.canonical_llm_jailbroken = True
                             attack_data_current_iteration.jailbreak_detected = True
                             attack_results_current_iteration.jailbreak_detection_count += 1
 
