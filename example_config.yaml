@@ -1,0 +1,10 @@
+# Broken Hill Attack Configuration
+# Example for CPU / Intel Iris Xe testing with a Small Language Model
+model_path: "Qwen/Qwen2.5-0.5B-Instruct"
+base_prompt: "Tell me a story about artificial intelligence"
+target_output: "Sure, here is a story about artificial intelligence:"
+batch_size: 16
+topk: 32
+max_iterations: 5
+exclude_special_tokens: true
+exclude_nonascii_tokens: true

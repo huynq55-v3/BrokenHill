@@ -1659,18 +1659,35 @@ class VolatileAttackState():
 
     # Loads select configuration files as dicts for use in various loading operations that occur before the model and tokenizer are loaded by Transformers
     def load_model_and_tokenizer_configuration_files(self):
-        # config.json
-        model_config_json_path = os.path.join(self.persistable.attack_params.model_path, "config.json")
-        self.model_config_dict = self.load_model_or_tokenizer_configuration_file(model_config_json_path)
-        # generation_config.json
-        generation_config_json_path = os.path.join(self.persistable.attack_params.model_path, "generation_config.json")
-        self.generation_config_dict = self.load_model_or_tokenizer_configuration_file(generation_config_json_path)
+        model_path = self.persistable.attack_params.model_path
+        if model_path and os.path.isdir(model_path):
+            # config.json
+            model_config_json_path = os.path.join(model_path, "config.json")
+            self.model_config_dict = self.load_model_or_tokenizer_configuration_file(model_config_json_path)
+            # generation_config.json
+            generation_config_json_path = os.path.join(model_path, "generation_config.json")
+            self.generation_config_dict = self.load_model_or_tokenizer_configuration_file(generation_config_json_path)
+        else:
+            try:
+                from transformers import AutoConfig
+                cfg = AutoConfig.from_pretrained(model_path)
+                self.model_config_dict = cfg.to_dict()
+            except Exception as e:
+                if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
+                    logger.debug(f"Could not load AutoConfig for '{model_path}': {e}")
+                self.model_config_dict = {}
+            self.generation_config_dict = {}
+
         # tokenizer_config.json
-        tokenizer_config_json_path = os.path.join(self.persistable.attack_params.tokenizer_path, "tokenizer_config.json")
-        self.tokenizer_config_dict = self.load_model_or_tokenizer_configuration_file(tokenizer_config_json_path)
+        tokenizer_path = self.persistable.attack_params.tokenizer_path or model_path
+        if tokenizer_path and os.path.isdir(tokenizer_path):
+            tokenizer_config_json_path = os.path.join(tokenizer_path, "tokenizer_config.json")
+            self.tokenizer_config_dict = self.load_model_or_tokenizer_configuration_file(tokenizer_config_json_path)
+        else:
+            self.tokenizer_config_dict = {}
         
         # populate values based on that data
-        if self.model_config_dict is not None:
+        if self.model_config_dict is not None and isinstance(self.model_config_dict, dict):
             model_architectures = self.get_model_or_tokenizer_configuration_file_value(self.model_config_dict, "architectures")
             if model_architectures is not None:
                 if isinstance(model_architectures, list):
@@ -1678,7 +1695,7 @@ class VolatileAttackState():
                         self.model_architectures = add_values_to_list_if_not_already_present(self.model_architectures, model_architectures, ignore_none = True)
     
     def check_for_qwen_outlaw_parameter(self, parameter_name, danger_charlie_prince_qwen_model_detected):
-        if parameter_name in self.model_config_dict.keys():
+        if self.model_config_dict and parameter_name in self.model_config_dict:
             if self.log_manager.get_lowest_log_level() <= logging.DEBUG:
                 logger.debug(f"This Qwen model has a '{parameter_name}' option in its configuration, indicating it is likely an outlaw and criminal.")
         else:

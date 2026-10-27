@@ -73,23 +73,20 @@ import transformers
 # RuntimeError: Failed to import transformers.models.detr.image_processing_detr_fast because of the following error (look up to see its traceback):
 # cannot import name 'pil_torch_interpolation_mapping' from 'transformers.image_utils' (/mnt/md0/Machine_Learning/test_build-04/lib/python3.11/site-packages/transformers/image_utils.py)
 
-ignored_problem_attributes = [ "DetrImageProcessorFast" ]
-
-for attribute_name in dir(transformers):
-    if attribute_name not in ignored_problem_attributes:
-        try:
-            attribute = getattr(transformers, attribute_name)
-            if isclass(attribute):
-                #import pdb; pdb.Pdb(nosigint=True).set_trace()
-                # Add the class to this package's variables
-                if hasattr(attribute, "__name__"):
-                    if "ForCausalLM" in attribute.__name__:
-                        #logger.debug(f"importing {attribute.__name__} from transformers")
-                        globals()[attribute_name] = attribute
-        except Exception as e:
-            logger.warning(f"Error while examining Transformers attribute '{attribute_name}' during dynamic import of all ForCausalLM classes: {e}\n{traceback.format_exc()}")
-
-# END: based loosely on https://julienharbulot.com/python-dynamical-import.html
+# Import only the specific model classes referenced in this module for fast startup
+_MODEL_CLASSES = [
+    "BartForCausalLM", "BigBirdPegasusForCausalLM", "PegasusForCausalLM",
+    "BlenderbotForCausalLM", "FalconForCausalLM", "FalconMambaForCausalLM",
+    "GemmaForCausalLM", "Gemma2ForCausalLM", "GPT2LMHeadModel", "GPTJForCausalLM",
+    "GPTNeoForCausalLM", "GPTNeoXForCausalLM", "LlamaForCausalLM", "MambaForCausalLM",
+    "MptForCausalLM", "OPTForCausalLM", "RobertaForCausalLM", "Qwen2ForCausalLM",
+    "StableLmForCausalLM", "PhiForCausalLM", "Phi3ForCausalLM"
+]
+for _cls_name in _MODEL_CLASSES:
+    if hasattr(transformers, _cls_name):
+        globals()[_cls_name] = getattr(transformers, _cls_name)
+    else:
+        globals()[_cls_name] = type(_cls_name, (), {})
 
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):

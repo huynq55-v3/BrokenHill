@@ -73,6 +73,15 @@ def get_decoded_token(attack_state, token):
     if isinstance(token, type(None)):
         logger.warning(f"a null token ID was passed to this function. This usually indicates a bug.")
         return None
+    if hasattr(token, "data") and isinstance(token.data, dict) and "input_ids" in token.data:
+        token = token.data["input_ids"]
+    elif isinstance(token, dict) and "input_ids" in token:
+        token = token["input_ids"]
+    elif hasattr(token, "input_ids"):
+        token = token.input_ids
+    if isinstance(token, list) and len(token) > 0 and (isinstance(token[0], dict) or hasattr(token[0], "input_ids")):
+        first = token[0]
+        token = first.get("input_ids", first) if isinstance(first, dict) else getattr(first, "input_ids", first)
     token_to_decode = token
     # workaround for models like Gemma that need all tokens to be in the form of a list
     wrap_in_list = False
@@ -80,6 +89,16 @@ def get_decoded_token(attack_state, token):
         wrap_in_list = True
     if wrap_in_list:
         token_to_decode = [ token ]
+    if isinstance(token_to_decode, list):
+        clean_ids = []
+        for x in token_to_decode:
+            if isinstance(x, dict) and "input_ids" in x:
+                clean_ids.extend(x["input_ids"] if isinstance(x["input_ids"], list) else [x["input_ids"]])
+            elif isinstance(x, (list, tuple)):
+                clean_ids.extend(x)
+            else:
+                clean_ids.append(x)
+        token_to_decode = clean_ids
         #if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         #    if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
         #        logger.debug(f"converted '{token}' to '{token_to_decode}'")
@@ -95,6 +114,12 @@ def get_decoded_token(attack_state, token):
     return result
 
 def get_decoded_tokens(attack_state, tokens, recursively_process_arrays = False):
+    if hasattr(tokens, "data") and isinstance(tokens.data, dict) and "input_ids" in tokens.data:
+        tokens = tokens.data["input_ids"]
+    elif isinstance(tokens, dict) and "input_ids" in tokens:
+        tokens = tokens["input_ids"]
+    elif hasattr(tokens, "input_ids"):
+        tokens = tokens.input_ids
     if attack_state.log_manager.get_lowest_log_level() <= logging.DEBUG:
         if attack_state.persistable.attack_params.generate_debug_logs_requiring_extra_tokenizer_calls:
             logger.debug(f"decoding token IDs '{tokens}'")

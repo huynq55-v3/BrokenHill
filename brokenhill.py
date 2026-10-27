@@ -9,7 +9,7 @@ def get_logo():
     #result = "xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx||xxxxxxxxxxxxxxxxxxx|xxxxxxxxxxxxxxxxxxx\n"
     result += " .                                                                            . \n"
     result += "   .oO___________                                              ___________Oo.   \n"
-    result += "   .             \____________________________________________/             .   \n"
+    result += r"   .             \____________________________________________/             .   " + "\n"
     result += "    |                                                                      |    \n"
     result += "    |                                                                      |    \n"
     result += "    |                             Broken Hill                              |    \n"
@@ -19,7 +19,7 @@ def get_logo():
     result += "    |                https://github.com/BishopFox/BrokenHill               |    \n"
     result += "    |                                                                      |    \n"
     result += "    |                   ________________________________                   |    \n"
-    result += "   '  _________________/                                \_________________  '   \n"
+    result += r"   '  _________________/                                \_________________  '   " + "\n"
     result += "   '^O                                                                    O^'   \n"
     result += " '                                                                            ' \n"
     result += "                                                                                \n"
@@ -1339,14 +1339,21 @@ if __name__=='__main__':
             print(f"Couldn't load options from an existing state file: {e}")
             print(traceback.format_exc())
             sys.exit(1)
-    file_contents = get_file_content_from_sys_argv(sys.argv, "--load-options")
-    for i in range(0, len(file_contents)):
-        try:
-            existing_attack_params = AttackParams.from_json(file_contents[i])
-            attack_params = AttackParams.apply_dict(attack_params, existing_attack_params.to_dict())
-        except Exception as e:
-            print(f"Couldn't load options from a saved options file: {e}")
-            sys.exit(1)
+    config_flags = ["--load-options", "--config", "-c"]
+    for cflag in config_flags:
+        file_contents = get_file_content_from_sys_argv(sys.argv, cflag)
+        for i in range(0, len(file_contents)):
+            try:
+                import yaml
+                loaded_dict = yaml.safe_load(file_contents[i])
+                if isinstance(loaded_dict, dict):
+                    attack_params = AttackParams.apply_dict(attack_params, loaded_dict)
+                else:
+                    existing_attack_params = AttackParams.from_json(file_contents[i])
+                    attack_params = AttackParams.apply_dict(attack_params, existing_attack_params.to_dict())
+            except Exception as e:
+                print(f"Couldn't load options from configuration file ({cflag}): {e}")
+                sys.exit(1)
         
     parser = argparse.ArgumentParser(description=get_script_description(),formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
@@ -1419,7 +1426,7 @@ if __name__=='__main__':
     parser.add_argument("--auto-target", type = str, 
         help=f"Instead of manually specifying separate --base-prompt and --target-output values, specify a single goal (without a leading verb such as 'write'), and Broken Hill will generate the base prompt and target output values, e.g. --auto-target 'a convincing anonymous death threat'")
     
-    parser.add_argument("--device", default=attack_params.model_device, type = str, 
+    parser.add_argument("--device", default=None, type = str, 
         help="The device to use for the PyTorch operations ('cuda', 'cuda:0', etc.). This is a shortcut equivalent to specifying both --model-device and --gradient-device with the same device name.")
     parser.add_argument("--model-device", type = str, 
         help="Experimental: The device to use for loading the model and performing PyTorch operations other than those related to the gradient ('cuda', 'cuda:0', etc.).")
@@ -1813,6 +1820,8 @@ if __name__=='__main__':
     parser.add_argument("--only-write-files-on-completion", type = str2bool, nargs='?',
         const=True,
         help="If this option is specified, Broken Hill will only write the following output files to persistent storage at the end of an attack, or if the attack is interrupted: JSON-formatted result data (--json-output-file), performance statistics (--performance-output-file), and the attack state. This can significantly boost the performance of longer attacks by avoiding repeated writes of increasingly large files. However, if Broken Hill encounters an unhandled error, *all* of the results may be lost. When this option is not specified, result data and state are written to persistent storage at every iteration, and performance statistics are written every time they're collected. This option is mainly included for use in testing, to avoid unnecessarily reducing the lifetime of the test system's disk array.")
+    parser.add_argument("-c", "--config", type = str,
+        help="Load attack parameters from a YAML or JSON configuration file. Any command-line options will override values from the configuration file.")
     parser.add_argument("--save-options", type = str,
         help=f"Save all of the current attack parameters (default values + any explicitly-specified command-line options) to the specified file in JSON format, then exit.")
     parser.add_argument("--load-options", type = str,
@@ -1898,7 +1907,7 @@ if __name__=='__main__':
     default_device = attack_params.model_device
     combined_device_params = False
     individual_device_params = False
-    if args.device != default_device:
+    if args.device is not None:
         attack_params.model_device = args.device
         attack_params.gradient_device = args.device
         attack_params.forward_device = args.device
@@ -2431,11 +2440,14 @@ if __name__=='__main__':
             if args.model is None:
                 logger.critical("The --model option is required when performing the selected operation")
                 sys.exit(1)
-            attack_params.model_path = os.path.abspath(args.model)
-
-        if not os.path.isdir(attack_params.model_path):
-            logger.critical(f"The specified model directory ('{attack_params.model_path}') does not appear to exist.")
-            sys.exit(1)
+            if os.path.isdir(args.model):
+                attack_params.model_path = os.path.abspath(args.model)
+            elif "/" in args.model or args.model.startswith("hf:"):
+                # Support HuggingFace Hub repo IDs
+                attack_params.model_path = args.model.replace("hf:", "")
+            else:
+                logger.critical(f"The specified model directory ('{args.model}') does not appear to exist.")
+                sys.exit(1)
 
     # determine if any arbitrary code execution is possible during model load and handle accordingly
     if attack_params.peft_adapter_path is not None:
