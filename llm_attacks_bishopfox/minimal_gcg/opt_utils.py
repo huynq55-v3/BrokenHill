@@ -611,7 +611,7 @@ def get_adversarial_content_candidates(attack_state, coordinate_gradient, not_al
                 not_allowed_tokens_gradient_device = None
             if not_allowed_tokens_gradient_device is not None:
                 try:
-                    coordinate_gradient[:, not_allowed_tokens_gradient_device] = numpy.infty
+                    coordinate_gradient[:, not_allowed_tokens_gradient_device] = numpy.inf
                 except Exception as e:
                     logger.error(f"Exception thrown when applying the token denylist to the coordinate gradient: {e}\n{traceback.format_exc()}\nThe list of adversarial content candidates generated during this stage will likely not respect the denylist.")
 
